@@ -1,0 +1,140 @@
+Turn on the raspberry Pi cam port:
+  sudo raspi-config
+
+  cat /var/log/messages 
+
+Now you will need to create udev rules: 
+
+  cd /etc/udev/rules.d/
+  sudo nano 99-usb.rules
+
+SUBSYSTEM=="video4linux", ATTRS{idVendor}=="0000", ATTRS{idProduct}=="2900", ATTRS{serial}=="XXXXXXXXX", SYMLINK+="videognome"
+
+reboot
+
+Use list to looks at your devices:
+ls /dev
+
+Backup and copy your webcamd file:
+
+cd /root/bin/
+sudo cp webcamd webcamd_old
+sudo cp webcamd webcamd2
+sudo nano webcamd
+sudo nano webcamd2
+
+Change this line, this will hard set the raspicam:
+camera=”raspi”
+
+Now the second webcam file:
+sudo nano webcamd2
+
+camera_usb_options="-d /dev/videognome -r 640x480 -f 10"
+camera_http_options="-p 8081"
+
+# add video device into options
+    options="$options"
+    #options="$options -d /dev/$device"
+
+Copy the default files:
+
+cd /etc/default/
+sudo cp webcamd webcamd2
+sudo nano webcamd2
+
+Change these variables, just add a 2:
+# Daemon
+DAEMON=/root/bin/webcamd2
+
+# Log file to use
+LOG=/var/log/webcamd2.log
+
+Copy and change the init.d script:
+cd /etc/init.d/
+sudo cp webcamd webcamd2
+sudo nano webcamd2
+
+Add the 2 here:
+
+#!/bin/sh
+
+### BEGIN INIT INFO
+# Provides:          webcamd2
+# Required-Start:    $local_fs networking
+# Required-Stop:
+# Should-Start:
+# Should-Stop:
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: webcam2 daemon
+# Description:       Starts the OctoPi webcam daemon with the user specified config in
+#                    /etc/default/webcamd.
+### END INIT INFO
+
+# Author: Gina Haeussge
+
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+DESC="Webcam2 Daemon"
+NAME="webcamd2"
+DAEMON=/root/bin/webcamd2
+USER=pi
+PIDFILE=/var/run/$NAME.pid
+PKGNAME=webcamd2
+SCRIPTNAME=/etc/init.d/$PKGNAME
+LOG=/var/log/webcamd2.log
+
+
+
+Reload daemon:
+sudo systemctl daemon-reload
+
+Reload defaults:
+sudo update-rc.d webcamd2 defaults
+
+Start webcam 2 :
+sudo /etc/init.d/webcamd2 start
+
+Make sure its working:
+systemctl status webcamd2.service
+
+â webcamd2.service - LSB: webcam2 daemon
+   Loaded: loaded (/etc/init.d/webcamd2)
+   Active: active (running) since Sun 2017-12-03 19:33:55 UTC; 25s ago
+  Process: 20749 ExecStart=/etc/init.d/webcamd2 start (code=exited, status=0/SUCCESS)
+   CGroup: /system.slice/webcamd2.service
+           ââ20755 /bin/bash /root/bin/webcamd2
+           ââ20777 sleep 30
+		   
+Make a backup of the HAproxy file
+sudo cp /etc/haproxy/haproxy.cfg /etc/haproxy/haproxy.cfg.old
+
+Edit HAproxy:
+sudo nano /etc/haproxy/haproxy.cfg
+		
+Add this line under frontend public:
+
+frontend public
+        bind *:80
+        bind 0.0.0.0:443 ssl crt /etc/ssl/snakeoil.pem
+        option forwardfor except 127.0.0.1
+        use_backend webcam if { path_beg /webcam/ }
+        use_backend webcam2 if { path_beg /webcam2/ }
+        default_backend octoprint
+
+
+Add new backend at the end of the file:
+
+backend webcam2
+        reqrep ^([^\ :]*)\ /webcam2/(.*)     \1\ /\2
+        server webcam1  127.0.0.1:8081
+        errorfile 503 /etc/haproxy/errors/503-no-webcam.http
+
+now reboot:
+sudo reboot now
+
+Now in the gui in the setting menu update your all your instances add the IP and a 2 to the second instance:
+/webcam/?action=stream
+/webcam2/?action=stream
+
+	
+
